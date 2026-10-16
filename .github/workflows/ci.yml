@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test-and-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - run: pip install -r requirements.txt -r requirements-api.txt httpx
+      - run: python -m src.train_export
+      - run: python -m pytest tests -q
+      - name: Build image
+        run: docker build -t credit-api .
+      - name: Smoke test container and measure latency
+        run: |
+          docker run -d --name api -p 8000:8000 credit-api
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break || sleep 1; done
+          python -m src.loadtest --n 1000 --concurrency 1 8
+          docker logs api | tail -5

@@ -1,0 +1,7 @@
+.git
+data/
+artifacts/
+results/
+tests/
+__pycache__/
+*.pyc

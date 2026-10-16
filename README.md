@@ -98,6 +98,38 @@ Keeping selection inside the pipeline is what makes the 0.79 above believable.
 differences, but the model under-predicts for the 45+ and male groups (23.8% vs 26.3%; 23.3% vs 24.5%).
 Excluding the attributes does not remove proxies. A real deployment would need a fairness policy and a proper review.
 
+## Serving it (FastAPI + Docker)
+
+The `xgboost_selected` pipeline is also served as an API: `src/api.py` (FastAPI), `src/record.py` (single-record features), `Dockerfile` (multi-stage, trains in the build stage, non-root runtime).
+
+```bash
+python -m src.train_export                 # writes artifacts/ (model, model card, sample requests)
+uvicorn src.api:app --port 8000           # or: docker build -t credit-api . && docker run -p 8000:8000 credit-api
+curl localhost:8000/docs                  # request schema; POST /predict?explain=true returns top-3 reason codes
+python -m src.loadtest --url http://localhost:8000
+```
+
+Design choices:
+- **Inputs are validated and unknown fields rejected**, so SEX, AGE and MARRIAGE cannot be sent as inputs (tested).
+- **Same numbers as offline**: a test checks API probabilities against the offline predictions, and a parity test checks the fast feature path against the pandas path on 200 held-out rows.
+- **Model card and version** in every response; request logs hold ids, timings and risk band only, never inputs.
+- Risk bands are illustrative, not a credit policy.
+
+### Latency (measured, local uvicorn, 2 vCPU sandbox, client on the same machine)
+
+Where time goes for one record (in process, ms p50): pandas feature path 16.1, fast feature path 0.014, features + model 0.37, plus SHAP reasons 0.78. The first version spent about 40x more time in feature engineering than in the model, hence `src/record.py`.
+
+End to end over HTTP (2,000 requests each, `results/api_latency.json`):
+
+| Concurrency | Reasons | p50 | p95 | p99 | Throughput |
+|---|---|---|---|---|---|
+| 1 | no | 2.7 ms | 3.6 ms | 4.7 ms | 349 rps |
+| 1 | yes | 3.5 ms | 4.4 ms | 5.3 ms | 277 rps |
+| 8 | no | 13.8 ms | 22.0 ms | 26.8 ms | 504 rps |
+| 8 | yes | 19.5 ms | 29.1 ms | 34.7 ms | 369 rps |
+
+Caveats: one uvicorn worker, load generator sharing the same two cores, localhost network. The model itself is under 0.4 ms, so the rest is HTTP and validation overhead. The Docker image was **not built in the environment where I wrote this** (container registries were blocked), so the Dockerfile is validated by the CI workflow in `.github/workflows/ci.yml`, which builds the image and runs the load test against the container. Check the Actions tab for that result.
+
 ## Limitations
 
 - Single random split on one cross-sectional dataset from one market and period; no out-of-time validation.
