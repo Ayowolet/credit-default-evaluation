@@ -128,7 +128,7 @@ End to end over HTTP (2,000 requests each, `results/api_latency.json`):
 | 8 | no | 13.8 ms | 22.0 ms | 26.8 ms | 504 rps |
 | 8 | yes | 19.5 ms | 29.1 ms | 34.7 ms | 369 rps |
 
-Caveats: one uvicorn worker, load generator sharing the same two cores, localhost network. The model itself is under 0.4 ms, so the rest is HTTP and validation overhead. The Docker image was **not built in the environment where I wrote this** (container registries were blocked), so the Dockerfile is validated by the CI workflow in `.github/workflows/ci.yml`, which builds the image and runs the load test against the container. Check the Actions tab for that result.
+Caveats: one uvicorn worker, load generator sharing the same two cores, localhost network. The model itself is under 0.4 ms, so the rest is HTTP and validation overhead. The table above is from uvicorn run directly, not from inside the container. The CI workflow (`.github/workflows/ci.yml`) builds the Docker image, starts it, and runs the same load test against it on every push; the build and smoke test pass, but the container's latency figures are in the Actions log, not reproduced here. Run `python -m src.loadtest --url http://localhost:8000` against your own container for numbers on your hardware.
 
 ## Limitations
 
